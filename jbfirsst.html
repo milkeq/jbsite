@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>안녕하쎄요</title>
+<style>
+body { margin:0; overflow:hidden; background:#87CEEB; }
+canvas { display:block; margin:auto; touch-action:none; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const groundHeight = canvas.height * 0.25;
+const groundY = canvas.height - groundHeight;
+
+let playerName = "";
+let gameState = "start";
+
+let player = {
+    x: canvas.width/2,
+    y: groundY - 40,
+    width: 40,
+    height: 40,
+    vx: 0,
+    vy: 0,
+    speed: 0.5,
+    friction: 0.9,
+    gravity: 0.7,
+    jumpPower: -15,
+    onGround: true,
+    hp: 10
+};
+
+let obstacles = [];
+let maxObstacles = 10;
+
+let score = 0;
+let bestScore = localStorage.getItem("bestScore") || 0;
+
+let timeLeft = 30;
+let spawnRate = 1000;
+let obstacleSpeed = 3;
+let lastSpawn = 0;
+
+let shake = 0;
+let slowMotion = false;
+
+function startGame(name){
+    playerName = name;
+    gameState = "play";
+    timeLeft = 30;
+    score = 0;
+    player.hp = 10;
+    obstacles = [];
+    spawnRate = 1000;
+    obstacleSpeed = 3;
+}
+
+function spawnObstacle(){
+    if(obstacles.length >= maxObstacles) return;
+    obstacles.push({
+        x: Math.random()*canvas.width,
+        y: -50,
+        size: 20 + Math.random()*30,
+        speed: obstacleSpeed
+    });
+}
+
+function update(delta){
+    if(gameState !== "play") return;
+
+    timeLeft -= delta;
+    if(timeLeft <= 0){
+        timeLeft = 0;
+        slowMotion = true;
+        setTimeout(()=> gameState="result",1000);
+    }
+
+    // 난이도 증가
+    obstacleSpeed = 3 + (30-timeLeft)*0.1;
+    spawnRate = 1000 - (30-timeLeft)*20;
+    if(timeLeft < 5){
+        obstacleSpeed += 5;
+        spawnRate = 200;
+    }
+
+    // 물리
+    player.vy += player.gravity;
+    player.y += player.vy;
+    player.x += player.vx;
+    player.vx *= player.friction;
+
+    if(player.y + player.height >= groundY){
+        player.y = groundY - player.height;
+        player.vy = 0;
+        player.onGround = true;
+    }
+
+    if(player.x < 0) player.x = 0;
+    if(player.x + player.width > canvas.width)
+        player.x = canvas.width - player.width;
+
+    // 장애물
+    obstacles.forEach((o,i)=>{
+        o.y += o.speed;
+        if(o.y > groundY){
+            obstacles.splice(i,1);
+            score++;
+        }
+
+        // 충돌
+        if(player.x < o.x + o.size &&
+           player.x + player.width > o.x &&
+           player.y < o.y + o.size &&
+           player.y + player.height > o.y){
+            obstacles.splice(i,1);
+            player.hp--;
+            shake = 20;
+            if(player.hp <= 0){
+                gameState="result";
+            }
+        }
+    });
+
+    if(Date.now() - lastSpawn > spawnRate){
+        spawnObstacle();
+        lastSpawn = Date.now();
+    }
+}
+
+function draw(){
+    if(shake>0){
+        ctx.save();
+        ctx.translate((Math.random()-0.5)*shake,(Math.random()-0.5)*shake);
+        shake*=0.9;
+    }
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // 하늘
+    ctx.fillStyle="#87CEEB";
+    ctx.fillRect(0,0,canvas.width,groundY);
+
+    // 잔디
+    ctx.fillStyle="#4CAF50";
+    ctx.fillRect(0,groundY,canvas.width,groundHeight);
+
+    if(gameState==="start"){
+        ctx.fillStyle="black";
+        ctx.font="40px sans-serif";
+        ctx.fillText("이름 선택",canvas.width/2-100,150);
+
+        const names = ["민써","바론","은쏠","써율","써린","은써","째희","류(라)림"];
+        const buttonWidth = 240;
+        const buttonHeight = 60;
+        const startY = 200;
+        const gap = 20;
+
+        ctx.fillStyle="#fff";
+        names.forEach((name,i)=>{
+            let y = startY + i*(buttonHeight + gap);
+            ctx.fillRect(canvas.width/2 - buttonWidth/2, y, buttonWidth, buttonHeight);
+        });
+
+        ctx.fillStyle="black";
+        ctx.font="30px sans-serif";
+        names.forEach((name,i)=>{
+            let y = startY + i*(buttonHeight + gap);
+            ctx.fillText(name,canvas.width/2 - ctx.measureText(name).width/2, y + buttonHeight/2 +10);
+        });
+    }
+
+    if(gameState==="play"){
+        // UI
+        for(let i=0;i<player.hp;i++){
+            ctx.fillStyle="red";
+            ctx.fillRect(20+i*25,20,20,20);
+        }
+
+        ctx.fillStyle="black";
+        ctx.font="30px sans-serif";
+        ctx.fillText(Math.ceil(timeLeft),canvas.width/2-10,80);
+        ctx.fillText(playerName,canvas.width/2-50,120);
+
+        // 플레이어
+        ctx.fillStyle="white";
+        ctx.fillRect(player.x,player.y,player.width,player.height);
+
+        // 닉네임
+        ctx.fillStyle="black";
+        ctx.fillText(playerName,player.x,player.y-10);
+
+        // 장애물
+        ctx.fillStyle="purple";
+        obstacles.forEach(o=>{
+            ctx.fillRect(o.x,o.y,o.size,o.size);
+        });
+    }
+
+    if(gameState==="result"){
+        if(score>bestScore){
+            bestScore=score;
+            localStorage.setItem("bestScore",bestScore);
+        }
+
+        ctx.fillStyle="black";
+        ctx.font="40px sans-serif";
+        ctx.fillText("결과",canvas.width/2-40,200);
+        ctx.fillText("점수: "+score,canvas.width/2-80,300);
+        ctx.fillText("최고: "+bestScore,canvas.width/2-80,360);
+    }
+
+    if(shake>0) ctx.restore();
+}
+
+let lastTime = 0;
+function gameLoop(timestamp){
+    let delta = (timestamp-lastTime)/1000;
+    lastTime = timestamp;
+
+    if(!slowMotion) update(delta);
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+requestAnimationFrame(gameLoop);
+
+// 터치 컨트롤
+canvas.addEventListener("touchstart",e=>{
+    let x = e.touches[0].clientX;
+    let y = e.touches[0].clientY;
+
+    if(gameState==="start"){
+        const names = ["민써","바론","은쏠","써율","써린","은써","째희","류(라)림"];
+        const buttonWidth = 240;
+        const buttonHeight = 60;
+        const startY = 200;
+        const gap = 20;
+
+        names.forEach((name,i)=>{
+            let btnY = startY + i*(buttonHeight + gap);
+            if(x > canvas.width/2 - buttonWidth/2 &&
+               x < canvas.width/2 + buttonWidth/2 &&
+               y > btnY && y < btnY + buttonHeight){
+                startGame(name);
+            }
+        });
+    }
+
+    if(gameState==="play"){
+        if(y>canvas.height*0.7){
+            if(x<canvas.width/2){
+                player.vx -= 5;
+            }else{
+                if(player.onGround){
+                    player.vy = player.jumpPower;
+                    player.onGround=false;
+                }
+            }
+        }
+    }
+});
+</script>
+</body>
+</html>
